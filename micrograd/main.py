@@ -1,21 +1,20 @@
 import math
-import numpy as np
-import mlx.core as mx
+import random
 import matplotlib.pyplot as plt
 from graphviz import Digraph
 
 
-def f(x: float | mx.array) -> float | mx.array:
+def f(x: float) -> float:
     return 3 * x**2 - 4 * x + 5
 
 
-def plot_fx(xs: mx.array) -> None:
+def plot_fx(xs: float) -> None:
     ys = f(xs)
     plt.plot(xs, ys)
     plt.show()
 
 
-def fx_prime(x: float | mx.array, dx: float) -> float | mx.array:
+def fx_prime(x: float, dx: float) -> float:
     return (f(x + dx) - f(x)) / dx
 
 
@@ -171,70 +170,76 @@ def draw_dot(root):
     return dot
 
 
-# TODO:
-def mlx_impl():
-    pass
-    """
-    dtype = mx.float32
-    x1 = mx.array([2.0], dtype=dtype)
-    x2 = mx.array([0.0], dtype=dtype)
-    w1 = mx.array([-3.0], dtype=dtype)
-    w2 = mx.array([1.0], dtype=dtype)
-    b = mx.array([6.8813735870195432], dtype=dtype)
-    n = x1 * w1 + x2 * w2 + b
-    o = mx.tanh(n)
+class Neuron:
+    def __init__(self, nin):
+        self.w = [Value(random.uniform(-1, 1)) for _ in range(nin)]
+        self.b = Value(random.uniform(-1, 1))
 
-    print(o.item())
-    o.grad()
+    def __call__(self, x):
+        activation = sum((wi * xi for wi, xi in zip(self.w, x)), self.b)
+        out = activation.tanh()
+        return out
 
-    print("--------")
-    print("x2", x2.grad.item())
-    print("w2", w2.grad.item())
-    print("x1", x1.grad.item())
-    print("w1", w1.grad.item())
-    """
+    def parameters(self):
+        return self.w + [self.b]
+
+
+class Layer:
+    def __init__(self, nin, nout):
+        self.neurons = [Neuron(nin) for _ in range(nout)]
+
+    def __call__(self, x):
+        outs = [n(x) for n in self.neurons]
+        return outs[0] if len(outs) == 1 else outs
+
+    def parameters(self):
+        return [p for neuron in self.neurons for p in neuron.parameters()]
+
+
+class MLP:
+    def __init__(self, nin, nouts):
+        sz = [nin] + nouts
+        self.layers = [Layer(sz[i], sz[i + 1]) for i in range(len(nouts))]
+
+    def __call__(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        return x
+
+    def parameters(self):
+        return [p for layer in self.layers for p in layer.parameters()]
+
+
+def test_mlp():
+    x = [2.0, 3.0, -1.0]
+    n = MLP(3, [4, 4, 1])
+    print(n(x))
+    # mlp_dot = draw_dot(n(x))
+    # mlp_dot.view()
 
 
 def main():
-    # x = mx.arange(-5, 5, 0.25)
-    # plot_fx(x)
-    # a = Value(2.0, label="a")
-    # b = Value(-3.0, label="b")
-    # c = Value(10.0, label="c")
-    # e = a * b
-    # e.label = "e"
-    # d = e + c
-    # d.label = "d"
-    # f = Value(-2.0, label="f")
-    # L = d * f
-    # L.label = "L"
-    # inputs x1,x2
-    x1 = Value(2.0, label="x1")
-    x2 = Value(0.0, label="x2")
-    # weights w1,w2
-    w1 = Value(-3.0, label="w1")
-    w2 = Value(1.0, label="w2")
-    # bias of the neuron
-    b = Value(6.8813735870195432, label="b")
-    # x1*w1 + x2*w2 + b
-    x1w1 = x1 * w1
-    x1w1.label = "x1*w1"
-    x2w2 = x2 * w2
-    x2w2.label = "x2*w2"
-    x1w1x2w2 = x1w1 + x2w2
-    x1w1x2w2.label = "x1*w1 + x2*w2"
-    n = x1w1x2w2 + b
-    n.label = "n"
-    # o = n.tanh()
-    e = (2 * n).exp()
-    e.label = "e"
-    o = (e - 1) / (e + 1)
+    n = MLP(3, [4, 4, 1])
+    xs = [[2.0, 3.0, -1.0], [3.0, -1.0, 0.5], [0.5, 1.0, 1.0], [1.0, 1.0, -1.0]]
+    ys = [1.0, -1.0, -1.0, 1.0]
 
-    o.label = "o"
-    o.backward()
+    for k in range(100):
+        # forward pass
+        ypred = [n(x) for x in xs]
+        loss = sum(
+            (y_out - y_ground_truth) ** 2 for y_ground_truth, y_out in zip(ys, ypred)
+        )
 
-    dot = draw_dot(o)
-    dot.view()
+        # backward pass
+        for p in n.parameters():
+            p.grad = 0.0
+        loss.backward()
+
+        # update
+        for p in n.parameters():
+            p.data += -0.05 * p.grad
+
+        print(k, loss.data)
 
 
 if __name__ == "__main__":
